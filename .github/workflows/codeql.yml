@@ -1,0 +1,76 @@
+name: Security Analysis with SecDim Learning
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:       
+    inputs:
+      target_ref:
+        required: false
+        default: 'master'
+
+jobs:
+  security-analysis:
+    name: CodeQL Analysis with SecDim Learning
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [ 'java' ]
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v3
+      with:
+        languages: ${{ matrix.language }}
+        # Use security-extended queries to find more vulnerabilities
+        queries: security-extended,security-and-quality
+
+    - name: Autobuild
+      uses: github/codeql-action/autobuild@v3
+
+    - name: Perform CodeQL Analysis and Generate SARIF
+      id: analyze
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:${{matrix.language}}"
+        output: sarif # this is a folder
+        upload: false
+
+    - name: Ensure SARIF output exists
+      run: |
+        echo "Contents of the sarif folder:"
+        ls -R sarif || true
+    
+    - name: Enrich SARIF with SecDim Learning Labs
+      uses: secdim/sandbox-action@v2.0.0
+      with:
+        input_sarif_file: sarif/${{ matrix.language }}.sarif
+        output_sarif_file: secdim-enhanced-findings.sarif
+
+    - name: Upload SecDim Enhanced Results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: secdim-enhanced-findings.sarif
+        category: secdim-learning-labs
+
+    - name: Upload SARIF Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: sarif-results-${{ matrix.language }}
+        path: |
+          sarif/${{ matrix.language }}.sarif
+          secdim-enhanced-findings.sarif
+        retention-days: 30
+      if: always()
+
+    
